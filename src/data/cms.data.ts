@@ -101,9 +101,22 @@ export const cmsData = [
             placeholder: "your@email.com",
           },
         },
+        {
+          type: "textarea",
+          name: "message",
+          label: "Message",
+          validation: {
+            required: true,
+            minLength: 5,
+            maxLength: 500,
+          },
+          styling: {
+            placeholder: "How can we help you?",
+          },
+        },
       ],
       submission: {
-        endpoint: "/api/contact",
+        endpoint: "/api/contactable",
         method: "POST",
         successMessage: "Thank you for contacting us!",
         errorMessage: "Something went wrong. Please try again.",
