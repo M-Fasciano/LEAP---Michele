@@ -1,5 +1,5 @@
 // Import necessary hooks and libraries
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { z, ZodRawShape, ZodString } from "zod";
 import { useSubmitForm } from "@/hooks/submitForm.hook";
 import { useCmsModule } from "@/hooks/useCmsModule.hooks";
@@ -56,37 +56,38 @@ const ContactForm = ({ id }: { id: string }) => {
   }
 
   // Build Zod schema for client-side validation based on field definitions
-  const schemaShape: ZodRawShape = {};
-  const validators: Record<string, ZodString> = {};
-  fields.forEach((field) => {
-    let validator: ZodString = z.string();
-    if (field.validation?.required) {
+  const { validators, formSchema } = useMemo(() => {
+    const schemaShape: ZodRawShape = {};
+    const validators: Record<string, ZodString> = {};
+    fields.forEach((field) => {
+      let validator: ZodString = z.string();
+      // Always require all fields
       validator = validator.min(1, { message: `${field.label} is required` });
-    }
-    if (field.validation?.minLength) {
-      validator = validator.min(field.validation.minLength, {
-        message: `${field.label} must be at least ${field.validation.minLength} characters`,
-      });
-    }
-    if (field.validation?.maxLength) {
-      validator = validator.max(field.validation.maxLength, {
-        message: `${field.label} must be at most ${field.validation.maxLength} characters`,
-      });
-    }
-    if (field.validation?.pattern) {
-      validator = validator.regex(new RegExp(field.validation.pattern), {
-        message: `${field.label} is invalid`,
-      });
-    }
-    if (field.type === "email") {
-      validator = validator.email({
-        message: "Please provide a valid email address",
-      });
-    }
-    schemaShape[field.name] = validator;
-    validators[field.name] = validator;
-  });
-  const formSchema = z.object(schemaShape);
+      if (field.validation?.minLength) {
+        validator = validator.min(field.validation.minLength, {
+          message: `${field.label} must be at least ${field.validation.minLength} characters`,
+        });
+      }
+      if (field.validation?.maxLength) {
+        validator = validator.max(field.validation.maxLength, {
+          message: `${field.label} must be at most ${field.validation.maxLength} characters`,
+        });
+      }
+      if (field.validation?.pattern) {
+        validator = validator.regex(new RegExp(field.validation.pattern), {
+          message: `${field.label} is invalid`,
+        });
+      }
+      if (field.type === "email") {
+        validator = validator.email({
+          message: "Please provide a valid email address",
+        });
+      }
+      schemaShape[field.name] = validator;
+      validators[field.name] = validator;
+    });
+    return { validators, formSchema: z.object(schemaShape) };
+  }, [fields]);
 
   // State for form data, success/error messages, loading, and field errors
   const [formData, setFormData] = useState<Record<string, string>>(
@@ -97,6 +98,14 @@ const ContactForm = ({ id }: { id: string }) => {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  // Reset formData and fieldErrors when fields change (e.g., after CMS loads)
+  useEffect(() => {
+    setFormData(
+      fields.reduce((acc, field) => ({ ...acc, [field.name]: "" }), {})
+    );
+    setFieldErrors({});
+  }, [fields]);
+
   // Effect to auto-hide the success message after 5 seconds
   useEffect(() => {
     if (!success) return;
@@ -104,8 +113,14 @@ const ContactForm = ({ id }: { id: string }) => {
     return () => clearTimeout(timeout);
   }, [success]);
 
-  // If the CMS module is not a form, render nothing
-  if (!cmsModule || cmsModule.type !== "form") return null;
+  // If the CMS module is not a form or fields are not loaded, render a loading indicator
+  if (!cmsModule || cmsModule.type !== "form" || fields.length === 0) {
+    return (
+      <div className="py-16 px-4 text-center text-gray-500">
+        Loading form...
+      </div>
+    );
+  }
 
   // Handle input changes and clear field errors on change
   const handleChange = (
@@ -126,6 +141,8 @@ const ContactForm = ({ id }: { id: string }) => {
   // Handle form submission, including client-side validation and API call
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Prevent submission if fields are not loaded
+    if (fields.length === 0) return;
     setLoading(true);
     setSuccess("");
     setError("");
@@ -216,7 +233,6 @@ const ContactForm = ({ id }: { id: string }) => {
                   value={formData[field.name]}
                   onChange={handleChange}
                   onBlur={(e) => validateField(field.name, e.target.value)}
-                  required={field.validation?.required}
                   minLength={field.validation?.minLength}
                   maxLength={field.validation?.maxLength}
                   pattern={field.validation?.pattern}
@@ -236,7 +252,6 @@ const ContactForm = ({ id }: { id: string }) => {
                   onChange={handleChange}
                   onBlur={(e) => validateField(field.name, e.target.value)}
                   rows={4}
-                  required={field.validation?.required}
                   minLength={field.validation?.minLength}
                   maxLength={field.validation?.maxLength}
                   placeholder={field.styling?.placeholder}
